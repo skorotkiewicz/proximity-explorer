@@ -19,7 +19,7 @@ local CONFIG = {
     WORLD_WIDTH = 2000,         -- Total world width
     WORLD_HEIGHT = 2000,        -- Total world height
     TILE_SIZE = 32,             -- Size of each map tile
-    SEED_OFFSET = 12345,        -- Base seed for generation
+    SEED_OFFSET = 77777,        -- Base seed for generation
     CHAT_DURATION = 5,          -- Seconds chat messages stay visible
     MAX_CHAT_HISTORY = 10,      -- Max chat messages per player
 }
@@ -31,20 +31,71 @@ local world_tiles = {}  -- Cache for generated tiles
 local game_time = 0     -- Track game time manually
 
 -- ============================================================================
--- SEEDED RANDOM NUMBER GENERATOR (Deterministic based on position)
--- Uses a simple LCG (Linear Congruential Generator) approach
+-- IMPROVED SEEDED TERRAIN GENERATOR
+-- Uses multi-octave fractal noise for natural-looking landscapes
 -- ============================================================================
+
+-- Simple hash function for deterministic randomness
 local function hash(x, y, seed)
-    -- Simple deterministic hash function for terrain generation
-    -- No bit32 dependency - uses modular arithmetic
     local n = (x * 374761393 + y * 668265263 + seed * 1013904223) % 2147483647
     n = ((n * 1103515245 + 12345) % 2147483647)
     n = ((n * 1103515245 + 12345) % 2147483647)
     return (n % 10000) / 10000
 end
 
+-- Smoothstep for interpolation
+local function smoothstep(t)
+    return t * t * (3 - 2 * t)
+end
+
+-- 2D gradient noise (simplified Perlin-like)
+local function gradient_noise(x, y, seed)
+    -- Get integer grid coordinates
+    local x0 = math.floor(x)
+    local y0 = math.floor(y)
+    local x1 = x0 + 1
+    local y1 = y0 + 1
+    
+    -- Fractional parts
+    local fx = x - x0
+    local fy = y - y0
+    
+    -- Smooth the fractional parts
+    local sx = smoothstep(fx)
+    local sy = smoothstep(fy)
+    
+    -- Hash values at grid corners
+    local n00 = hash(x0, y0, seed)
+    local n10 = hash(x1, y0, seed)
+    local n01 = hash(x0, y1, seed)
+    local n11 = hash(x1, y1, seed)
+    
+    -- Bilinear interpolation
+    local nx0 = n00 + sx * (n10 - n00)
+    local nx1 = n01 + sx * (n11 - n01)
+    
+    return nx0 + sy * (nx1 - nx0)
+end
+
+-- Multi-octave fractal noise (fBm - Fractal Brownian Motion)
+local function fractal_noise(x, y, seed, octaves, persistence, scale)
+    local value = 0
+    local amplitude = 1
+    local frequency = 1 / scale
+    local max_value = 0
+    
+    for i = 1, octaves do
+        value = value + gradient_noise(x * frequency, y * frequency, seed + i * 1000) * amplitude
+        max_value = max_value + amplitude
+        amplitude = amplitude * persistence
+        frequency = frequency * 2
+    end
+    
+    return value / max_value
+end
+
+-- Get terrain type based on elevation and moisture
 local function get_tile_type(world_x, world_y)
-    -- Calculate tile coordinates
     local tile_x = math.floor(world_x / CONFIG.TILE_SIZE)
     local tile_y = math.floor(world_y / CONFIG.TILE_SIZE)
     local key = tile_x .. "," .. tile_y
@@ -54,20 +105,52 @@ local function get_tile_type(world_x, world_y)
         return world_tiles[key]
     end
     
-    -- Generate tile based on seed (x:100, y:753 always same due to deterministic hash)
-    local value = hash(tile_x, tile_y, CONFIG.SEED_OFFSET)
+    -- Generate elevation map (large scale terrain features)
+    local elevation = fractal_noise(tile_x, tile_y, CONFIG.SEED_OFFSET, 4, 0.5, 30)
     
+    -- Generate moisture map (for biome variation)
+    local moisture = fractal_noise(tile_x, tile_y, CONFIG.SEED_OFFSET + 5000, 3, 0.6, 40)
+    
+    -- Add some local detail noise
+    local detail = fractal_noise(tile_x, tile_y, CONFIG.SEED_OFFSET + 10000, 2, 0.5, 8) * 0.15
+    elevation = elevation + detail
+    
+    -- Determine tile type based on elevation and moisture
     local tile_type
-    if value < 0.15 then
-        tile_type = "water"     -- Impassable water
-    elseif value < 0.30 then
-        tile_type = "rock"      -- Impassable rock
-    elseif value < 0.45 then
-        tile_type = "tree"      -- Blocking trees
-    elseif value < 0.70 then
-        tile_type = "grass"     -- Normal grass
+    
+    if elevation < 0.30 then
+        -- Low elevation = water
+        tile_type = "water"
+    elseif elevation < 0.35 then
+        -- Beach/shore
+        tile_type = "sand"
+    elseif elevation < 0.65 then
+        -- Mid elevation - depends on moisture
+        if moisture < 0.35 then
+            tile_type = "sand"      -- Dry = desert/sand
+        elseif moisture < 0.55 then
+            tile_type = "grass"     -- Medium = grassland
+        else
+            tile_type = "tree"      -- Wet = forest
+        end
+    elseif elevation < 0.78 then
+        -- Higher elevation
+        if moisture > 0.5 then
+            tile_type = "tree"      -- Wet highlands = dense forest
+        else
+            tile_type = "grass"     -- Dry highlands = meadow
+        end
     else
-        tile_type = "sand"      -- Sandy ground
+        -- Mountain peaks
+        tile_type = "rock"
+    end
+    
+    -- Add some random scattered features (rare)
+    local scatter = hash(tile_x * 7, tile_y * 11, CONFIG.SEED_OFFSET + 20000)
+    if scatter > 0.97 and tile_type == "grass" then
+        tile_type = "tree"  -- Occasional lone tree
+    elseif scatter > 0.985 and tile_type == "grass" then
+        tile_type = "rock"  -- Occasional boulder
     end
     
     -- Cache it
@@ -81,13 +164,13 @@ local function is_tile_passable(world_x, world_y)
 end
 
 -- ============================================================================
--- TILE COLORS
+-- TILE COLORS (enhanced with slight variations)
 -- ============================================================================
 local TILE_COLORS = {
-    water = {30, 90, 150},
-    rock = {80, 70, 70},
-    tree = {20, 80, 30},
-    grass = {50, 120, 50},
+    water = {35, 95, 160},
+    rock = {90, 85, 80},
+    tree = {25, 85, 35},
+    grass = {55, 130, 55},
     sand = {180, 160, 100},
 }
 
