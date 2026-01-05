@@ -10,6 +10,8 @@
 
 -- Configuration
 local CONFIG = {
+    SCREEN_WIDTH = 800,         -- Screen width (800x600 virtual resolution)
+    SCREEN_HEIGHT = 600,        -- Screen height
     VISIBILITY_RANGE = 100,     -- Max pixels players can see each other
     CHAT_RANGE = 100,           -- Max pixels for chat visibility
     PLAYER_SPEED = 150,         -- Pixels per second
@@ -211,8 +213,18 @@ function draw(session_id)
     end
     
     local px, py = player.x, player.y
+    
+    -- Calculate camera position (center on player)
     local cam_x = px - 400  -- Center camera on player (800/2)
     local cam_y = py - 300  -- Center camera on player (600/2)
+    
+    -- Clamp camera to world bounds (prevent showing empty space)
+    cam_x = math.max(0, math.min(CONFIG.WORLD_WIDTH - 800, cam_x))
+    cam_y = math.max(0, math.min(CONFIG.WORLD_HEIGHT - 600, cam_y))
+    
+    -- Calculate player's screen position (may not be center if near edge)
+    local player_screen_x = px - cam_x
+    local player_screen_y = py - cam_y
     
     -- Clear with dark background
     api.clear_screen(15, 20, 25)
@@ -271,10 +283,10 @@ function draw(session_id)
     for i = 0, segments - 1 do
         local angle1 = (i / segments) * 2 * math.pi
         local angle2 = ((i + 1) / segments) * 2 * math.pi
-        local x1 = 400 + math.cos(angle1) * CONFIG.VISIBILITY_RANGE
-        local y1 = 300 + math.sin(angle1) * CONFIG.VISIBILITY_RANGE
-        local x2 = 400 + math.cos(angle2) * CONFIG.VISIBILITY_RANGE
-        local y2 = 300 + math.sin(angle2) * CONFIG.VISIBILITY_RANGE
+        local x1 = player_screen_x + math.cos(angle1) * CONFIG.VISIBILITY_RANGE
+        local y1 = player_screen_y + math.sin(angle1) * CONFIG.VISIBILITY_RANGE
+        local x2 = player_screen_x + math.cos(angle2) * CONFIG.VISIBILITY_RANGE
+        local y2 = player_screen_y + math.sin(angle2) * CONFIG.VISIBILITY_RANGE
         api.draw_line(x1, y1, x2, y2, 1)
     end
     
@@ -349,17 +361,17 @@ function draw(session_id)
         end
     end
     
-    -- Draw current player (always visible, centered)
+    -- Draw current player (always visible, at calculated screen position)
     local my_color = get_player_color(session_id)
     
     -- Player glow
     api.set_color(my_color[1], my_color[2], my_color[3], 80)
     local glow_size = CONFIG.PLAYER_SIZE + 4
-    api.fill_rect(400 - glow_size, 300 - glow_size, glow_size * 2, glow_size * 2)
+    api.fill_rect(player_screen_x - glow_size, player_screen_y - glow_size, glow_size * 2, glow_size * 2)
     
     -- Player body
     api.set_color(my_color[1], my_color[2], my_color[3])
-    api.fill_rect(400 - CONFIG.PLAYER_SIZE, 300 - CONFIG.PLAYER_SIZE, 
+    api.fill_rect(player_screen_x - CONFIG.PLAYER_SIZE, player_screen_y - CONFIG.PLAYER_SIZE, 
                   CONFIG.PLAYER_SIZE * 2, CONFIG.PLAYER_SIZE * 2)
     
     -- Player inner highlight
@@ -369,35 +381,42 @@ function draw(session_id)
         math.min(255, math.floor(my_color[3] * 1.3))
     )
     local inner = CONFIG.PLAYER_SIZE - 3
-    api.fill_rect(400 - inner, 300 - inner, inner * 2, inner * 2)
+    api.fill_rect(player_screen_x - inner, player_screen_y - inner, inner * 2, inner * 2)
     
     -- Draw own chat messages above player
-    local msg_y = 268
+    local msg_y = player_screen_y - 32
     for i = #player.chat_messages, math.max(1, #player.chat_messages - 2), -1 do
         local msg = player.chat_messages[i]
         if msg then
             api.set_color(255, 255, 200)
-            api.draw_text(msg.text, 370, msg_y)
+            api.draw_text(msg.text, player_screen_x - 30, msg_y)
             msg_y = msg_y - 12
         end
     end
     
-    -- Draw HUD background
-    api.set_color(20, 25, 35, 220)
-    api.fill_rect(0, 0, 210, 95)
+    -- Draw HUD background (moved right and down to avoid edge cutoff)
+    local hud_x = 10
+    local hud_y = 10
+    local hud_w = 320
+    local hud_h = 90
     
-    -- HUD border
+    api.set_color(20, 25, 35, 220)
+    api.fill_rect(hud_x, hud_y, hud_w, hud_h)
+    
+    -- HUD border (all 4 sides)
     api.set_color(60, 70, 90)
-    api.draw_line(0, 95, 210, 95, 2)
-    api.draw_line(210, 0, 210, 95, 2)
+    api.draw_line(hud_x, hud_y, hud_x + hud_w, hud_y, 2)                      -- Top
+    api.draw_line(hud_x, hud_y, hud_x, hud_y + hud_h, 2)                      -- Left
+    api.draw_line(hud_x, hud_y + hud_h, hud_x + hud_w, hud_y + hud_h, 2)      -- Bottom
+    api.draw_line(hud_x + hud_w, hud_y, hud_x + hud_w, hud_y + hud_h, 2)      -- Right
     
     -- Title
     api.set_color(100, 200, 255)
-    api.draw_text("PROXIMITY EXPLORER", 10, 8)
+    api.draw_text("PROXIMITY EXPLORER", hud_x + 10, hud_y + 15)
     
     -- Coordinates
     api.set_color(200, 200, 200)
-    api.draw_text("X: " .. math.floor(px) .. "  Y: " .. math.floor(py), 10, 28)
+    api.draw_text("X: " .. math.floor(px) .. "  Y: " .. math.floor(py), hud_x + 10, hud_y + 35)
     
     -- Count nearby players
     local nearby_count = 0
@@ -410,12 +429,11 @@ function draw(session_id)
     else
         api.set_color(150, 150, 150)
     end
-    api.draw_text("Nearby: " .. nearby_count .. " player(s)", 10, 48)
+    api.draw_text("Nearby: " .. nearby_count .. " player(s)", hud_x + 10, hud_y + 55)
     
     -- Controls hint
     api.set_color(120, 120, 140)
-    api.draw_text("WASD/Arrows: Move", 10, 68)
-    api.draw_text("Enter: Chat", 130, 68)
+    api.draw_text("WASD/Arrows: Move  |  Enter: Chat", hud_x + 10, hud_y + 75)
     
     -- Draw chat input if active
     if player.chat_input_active then
@@ -429,14 +447,24 @@ function draw(session_id)
         api.draw_text("[Enter] Send  [Esc] Cancel", 550, 572)
     end
     
-    -- Seed info badge
+    -- Seed info badge (positioned below main HUD)
+    local seed_x = 10
+    local seed_y = 105
+    local seed_w = 150
+    local seed_h = 24
+    
     api.set_color(40, 45, 60, 200)
-    api.fill_rect(610, 0, 190, 28)
+    api.fill_rect(seed_x, seed_y, seed_w, seed_h)
+    
+    -- Seed border (all 4 sides)
     api.set_color(60, 70, 90)
-    api.draw_line(610, 0, 610, 28, 2)
-    api.draw_line(610, 28, 800, 28, 2)
+    api.draw_line(seed_x, seed_y, seed_x + seed_w, seed_y, 2)                      -- Top
+    api.draw_line(seed_x, seed_y, seed_x, seed_y + seed_h, 2)                      -- Left
+    api.draw_line(seed_x, seed_y + seed_h, seed_x + seed_w, seed_y + seed_h, 2)    -- Bottom
+    api.draw_line(seed_x + seed_w, seed_y, seed_x + seed_w, seed_y + seed_h, 2)    -- Right
+    
     api.set_color(180, 180, 220)
-    api.draw_text("Seed: " .. CONFIG.SEED_OFFSET, 620, 6)
+    api.draw_text("Seed: " .. CONFIG.SEED_OFFSET, seed_x + 10, seed_y + 8)
 end
 
 -- ============================================================================
