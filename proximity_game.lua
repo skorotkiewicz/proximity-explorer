@@ -25,18 +25,20 @@ local CONFIG = {
 -- Game state
 local db = nil
 local players = {}
-local chat_messages = {}
 local world_tiles = {}  -- Cache for generated tiles
+local game_time = 0     -- Track game time manually
 
 -- ============================================================================
 -- SEEDED RANDOM NUMBER GENERATOR (Deterministic based on position)
+-- Uses a simple LCG (Linear Congruential Generator) approach
 -- ============================================================================
 local function hash(x, y, seed)
-    -- Simple hash function for deterministic terrain
-    local n = x + y * 57 + seed * 131
-    n = bit32.bxor(bit32.lshift(n, 13), n)
-    n = n * (n * n * 15731 + 789221) + 1376312589
-    return bit32.band(n, 0x7fffffff) / 0x7fffffff
+    -- Simple deterministic hash function for terrain generation
+    -- No bit32 dependency - uses modular arithmetic
+    local n = (x * 374761393 + y * 668265263 + seed * 1013904223) % 2147483647
+    n = ((n * 1103515245 + 12345) % 2147483647)
+    n = ((n * 1103515245 + 12345) % 2147483647)
+    return (n % 10000) / 10000
 end
 
 local function get_tile_type(world_x, world_y)
@@ -115,10 +117,22 @@ local function distance(x1, y1, x2, y2)
 end
 
 -- ============================================================================
+-- SIMPLE SEEDED RANDOM FOR SPAWNING
+-- ============================================================================
+local rng_state = 12345
+
+local function simple_random(min_val, max_val)
+    rng_state = (rng_state * 1103515245 + 12345) % 2147483648
+    local range = max_val - min_val + 1
+    return min_val + (rng_state % range)
+end
+
+-- ============================================================================
 -- INITIALIZATION
 -- ============================================================================
 function init()
     db = api.new_spatial_db(CONFIG.VISIBILITY_RANGE)
+    game_time = 0
     print("Proximity Explorer initialized!")
     print("World size: " .. CONFIG.WORLD_WIDTH .. "x" .. CONFIG.WORLD_HEIGHT)
     print("Visibility range: " .. CONFIG.VISIBILITY_RANGE .. "px")
@@ -128,7 +142,7 @@ end
 -- UPDATE LOOP
 -- ============================================================================
 function update(dt)
-    local current_time = os.clock()
+    game_time = game_time + dt
     
     -- Update all players
     for session_id, player in pairs(players) do
@@ -175,7 +189,7 @@ function update(dt)
     for session_id, player in pairs(players) do
         local new_messages = {}
         for _, msg in ipairs(player.chat_messages) do
-            if current_time - msg.time < CONFIG.CHAT_DURATION then
+            if game_time - msg.time < CONFIG.CHAT_DURATION then
                 table.insert(new_messages, msg)
             end
         end
@@ -237,7 +251,7 @@ function draw(session_id)
     end
     
     -- Draw grid lines (subtle)
-    api.set_color(40, 45, 50, 100)
+    api.set_color(40, 45, 50)
     for tile_x = start_tile_x, end_tile_x do
         local screen_x = tile_x * CONFIG.TILE_SIZE - cam_x
         if screen_x >= 0 and screen_x <= 800 then
@@ -283,26 +297,48 @@ function draw(session_id)
                     
                     local color = get_player_color(other_id)
                     
+                    -- Draw player glow
+                    api.set_color(
+                        math.floor(color[1] * 0.5),
+                        math.floor(color[2] * 0.5),
+                        math.floor(color[3] * 0.5),
+                        math.floor(alpha * 100)
+                    )
+                    local glow_size = CONFIG.PLAYER_SIZE + 4
+                    api.fill_rect(screen_x - glow_size, screen_y - glow_size, glow_size * 2, glow_size * 2)
+                    
                     -- Draw player body
-                    api.set_color(color[1], color[2], color[3], math.floor(alpha * 255))
-                    -- Draw as filled circle (approximated with multiple rectangles)
-                    for r = CONFIG.PLAYER_SIZE, 1, -1 do
-                        local size = r * 2
-                        api.fill_rect(screen_x - r, screen_y - r, size, size)
-                    end
+                    api.set_color(
+                        math.floor(color[1] * alpha + 30 * (1 - alpha)),
+                        math.floor(color[2] * alpha + 30 * (1 - alpha)),
+                        math.floor(color[3] * alpha + 30 * (1 - alpha))
+                    )
+                    api.fill_rect(screen_x - CONFIG.PLAYER_SIZE, screen_y - CONFIG.PLAYER_SIZE, 
+                                  CONFIG.PLAYER_SIZE * 2, CONFIG.PLAYER_SIZE * 2)
+                    
+                    -- Draw player inner
+                    api.set_color(
+                        math.min(255, math.floor(color[1] * 1.3)),
+                        math.min(255, math.floor(color[2] * 1.3)),
+                        math.min(255, math.floor(color[3] * 1.3))
+                    )
+                    local inner = CONFIG.PLAYER_SIZE - 3
+                    api.fill_rect(screen_x - inner, screen_y - inner, inner * 2, inner * 2)
                     
                     -- Draw player name
-                    api.set_color(255, 255, 255, math.floor(alpha * 255))
-                    local name = other_player.name or ("Player " .. string.sub(other_id, 1, 4))
-                    api.draw_text(name, screen_x - 20, screen_y - 20)
+                    if alpha > 0.3 then
+                        api.set_color(255, 255, 255)
+                        local name = other_player.name or ("Player " .. string.sub(other_id, 1, 4))
+                        api.draw_text(name, screen_x - 20, screen_y - 22)
+                    end
                     
                     -- Draw their recent chat messages (if in chat range)
-                    if dist <= CONFIG.CHAT_RANGE then
-                        local msg_y = screen_y - 35
+                    if dist <= CONFIG.CHAT_RANGE and alpha > 0.3 then
+                        local msg_y = screen_y - 38
                         for i = #other_player.chat_messages, math.max(1, #other_player.chat_messages - 2), -1 do
                             local msg = other_player.chat_messages[i]
                             if msg then
-                                api.set_color(255, 255, 200, math.floor(alpha * 200))
+                                api.set_color(255, 255, 200)
                                 api.draw_text(msg.text, screen_x - 30, msg_y)
                                 msg_y = msg_y - 12
                             end
@@ -315,29 +351,53 @@ function draw(session_id)
     
     -- Draw current player (always visible, centered)
     local my_color = get_player_color(session_id)
+    
+    -- Player glow
+    api.set_color(my_color[1], my_color[2], my_color[3], 80)
+    local glow_size = CONFIG.PLAYER_SIZE + 4
+    api.fill_rect(400 - glow_size, 300 - glow_size, glow_size * 2, glow_size * 2)
+    
+    -- Player body
     api.set_color(my_color[1], my_color[2], my_color[3])
-    for r = CONFIG.PLAYER_SIZE, 1, -1 do
-        api.fill_rect(400 - r, 300 - r, r * 2, r * 2)
-    end
+    api.fill_rect(400 - CONFIG.PLAYER_SIZE, 300 - CONFIG.PLAYER_SIZE, 
+                  CONFIG.PLAYER_SIZE * 2, CONFIG.PLAYER_SIZE * 2)
+    
+    -- Player inner highlight
+    api.set_color(
+        math.min(255, math.floor(my_color[1] * 1.3)),
+        math.min(255, math.floor(my_color[2] * 1.3)),
+        math.min(255, math.floor(my_color[3] * 1.3))
+    )
+    local inner = CONFIG.PLAYER_SIZE - 3
+    api.fill_rect(400 - inner, 300 - inner, inner * 2, inner * 2)
     
     -- Draw own chat messages above player
-    local msg_y = 270
+    local msg_y = 268
     for i = #player.chat_messages, math.max(1, #player.chat_messages - 2), -1 do
         local msg = player.chat_messages[i]
         if msg then
-            api.set_color(255, 255, 200, 255)
+            api.set_color(255, 255, 200)
             api.draw_text(msg.text, 370, msg_y)
             msg_y = msg_y - 12
         end
     end
     
-    -- Draw HUD
-    api.set_color(20, 25, 35, 200)
-    api.fill_rect(0, 0, 200, 100)
+    -- Draw HUD background
+    api.set_color(20, 25, 35, 220)
+    api.fill_rect(0, 0, 210, 95)
     
-    api.set_color(255, 255, 255)
-    api.draw_text("PROXIMITY EXPLORER", 10, 10)
-    api.draw_text("X: " .. math.floor(px) .. " Y: " .. math.floor(py), 10, 30)
+    -- HUD border
+    api.set_color(60, 70, 90)
+    api.draw_line(0, 95, 210, 95, 2)
+    api.draw_line(210, 0, 210, 95, 2)
+    
+    -- Title
+    api.set_color(100, 200, 255)
+    api.draw_text("PROXIMITY EXPLORER", 10, 8)
+    
+    -- Coordinates
+    api.set_color(200, 200, 200)
+    api.draw_text("X: " .. math.floor(px) .. "  Y: " .. math.floor(py), 10, 28)
     
     -- Count nearby players
     local nearby_count = 0
@@ -345,26 +405,38 @@ function draw(session_id)
     nearby_count = nearby_count - 1  -- Exclude self
     if nearby_count < 0 then nearby_count = 0 end
     
-    api.set_color(100, 255, 100)
-    api.draw_text("Nearby: " .. nearby_count .. " players", 10, 50)
+    if nearby_count > 0 then
+        api.set_color(100, 255, 100)
+    else
+        api.set_color(150, 150, 150)
+    end
+    api.draw_text("Nearby: " .. nearby_count .. " player(s)", 10, 48)
     
-    -- Chat input hint
-    api.set_color(150, 150, 150)
-    api.draw_text("Press ENTER to chat", 10, 70)
+    -- Controls hint
+    api.set_color(120, 120, 140)
+    api.draw_text("WASD/Arrows: Move", 10, 68)
+    api.draw_text("Enter: Chat", 130, 68)
     
     -- Draw chat input if active
     if player.chat_input_active then
-        api.set_color(30, 35, 45, 230)
-        api.fill_rect(0, 560, 800, 40)
+        api.set_color(25, 30, 40, 240)
+        api.fill_rect(0, 555, 800, 45)
+        api.set_color(80, 100, 140)
+        api.draw_line(0, 555, 800, 555, 2)
         api.set_color(255, 255, 255)
-        api.draw_text("Chat: " .. (player.chat_buffer or "") .. "_", 10, 575)
+        api.draw_text("Chat: " .. (player.chat_buffer or "") .. "_", 10, 572)
+        api.set_color(150, 150, 170)
+        api.draw_text("[Enter] Send  [Esc] Cancel", 550, 572)
     end
     
-    -- Coordinates badge for seed verification
-    api.set_color(60, 65, 80, 200)
-    api.fill_rect(620, 0, 180, 30)
-    api.set_color(200, 200, 255)
-    api.draw_text("Seed: fixed @100,753", 630, 8)
+    -- Seed info badge
+    api.set_color(40, 45, 60, 200)
+    api.fill_rect(610, 0, 190, 28)
+    api.set_color(60, 70, 90)
+    api.draw_line(610, 0, 610, 28, 2)
+    api.draw_line(610, 28, 800, 28, 2)
+    api.set_color(180, 180, 220)
+    api.draw_text("Seed: " .. CONFIG.SEED_OFFSET, 620, 6)
 end
 
 -- ============================================================================
@@ -373,16 +445,25 @@ end
 function on_connect(session_id)
     print("Player connected: " .. session_id)
     
-    -- Spawn at the special seed location (100, 753) for testing
-    -- Or random spawn
-    local spawn_x = 100 + math.random(0, 200)
-    local spawn_y = 753 + math.random(0, 200)
+    -- Use session_id to seed spawn location for some variety
+    local seed_offset = 0
+    for i = 1, #session_id do
+        seed_offset = seed_offset + string.byte(session_id, i)
+    end
+    rng_state = seed_offset
+    
+    -- Spawn near the reference point (100, 753) with some randomness
+    local spawn_x = 100 + simple_random(0, 300)
+    local spawn_y = 753 + simple_random(0, 300)
     
     -- Make sure spawn is passable
     local attempts = 0
-    while not is_tile_passable(spawn_x, spawn_y) and attempts < 50 do
-        spawn_x = spawn_x + math.random(-50, 50)
-        spawn_y = spawn_y + math.random(-50, 50)
+    while not is_tile_passable(spawn_x, spawn_y) and attempts < 100 do
+        spawn_x = spawn_x + simple_random(-32, 32)
+        spawn_y = spawn_y + simple_random(-32, 32)
+        -- Keep within world bounds
+        spawn_x = math.max(50, math.min(CONFIG.WORLD_WIDTH - 50, spawn_x))
+        spawn_y = math.max(50, math.min(CONFIG.WORLD_HEIGHT - 50, spawn_y))
         attempts = attempts + 1
     end
     
@@ -400,7 +481,7 @@ function on_connect(session_id)
         name = "Player " .. string.sub(session_id, 1, 4),
     }
     
-    print("Player " .. session_id .. " spawned at (" .. spawn_x .. ", " .. spawn_y .. ")")
+    print("Player " .. session_id .. " spawned at (" .. math.floor(spawn_x) .. ", " .. math.floor(spawn_y) .. ")")
 end
 
 function on_disconnect(session_id)
@@ -425,7 +506,7 @@ function on_input(session_id, key_code, is_down)
                 if player.chat_buffer and #player.chat_buffer > 0 then
                     local msg = {
                         text = player.chat_buffer,
-                        time = os.clock(),
+                        time = game_time,
                     }
                     table.insert(player.chat_messages, msg)
                     
@@ -460,8 +541,14 @@ function on_input(session_id, key_code, is_down)
                     player.chat_buffer = string.sub(player.chat_buffer, 1, -2)
                 end
             elseif key_code >= 32 and key_code <= 126 then
-                -- Printable ASCII
-                player.chat_buffer = player.chat_buffer .. string.char(key_code)
+                -- Printable ASCII characters
+                -- Handle shift for uppercase (basic support)
+                local char = string.char(key_code)
+                -- Convert to lowercase by default (key codes come as uppercase)
+                if key_code >= 65 and key_code <= 90 then
+                    char = string.lower(char)
+                end
+                player.chat_buffer = player.chat_buffer .. char
             end
         end
         return  -- Don't process movement when chatting
@@ -472,7 +559,7 @@ function on_input(session_id, key_code, is_down)
 end
 
 -- ============================================================================
--- TEXT INPUT (if supported by engine)
+-- TEXT INPUT HANDLER (if supported by engine)
 -- ============================================================================
 function on_text(session_id, text)
     local player = players[session_id]
