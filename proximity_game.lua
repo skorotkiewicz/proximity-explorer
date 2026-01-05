@@ -547,7 +547,7 @@ function draw(session_id)
     api.draw_line(seed_x + seed_w, seed_y, seed_x + seed_w, seed_y + seed_h, 2)    -- Right
     
     api.set_color(180, 180, 220)
-    api.draw_text("Seed: " .. CONFIG.SEED_OFFSET, seed_x + 10, seed_y + 8)
+    api.draw_text("Seed: " .. CONFIG.SEED_OFFSET, seed_x + 10, seed_y + 14)
 end
 
 -- ============================================================================
