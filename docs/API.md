@@ -3,6 +3,13 @@
 
 A Multiplayer-First Server-Rendered Game Engine with Lua Scripting.
 
+### Get Started
+Run:
+
+```bash
+cleoselene my_game.lua
+```
+
 ## Game Structure
 
 A minimal game script (`main.lua`) must implement these callbacks:
