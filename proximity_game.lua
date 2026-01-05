@@ -253,8 +253,15 @@ function update(dt)
             vy = vy / len
         end
         
+        -- Get current tile for speed modifier
+        local current_tile = get_tile_type(player.x, player.y)
+        local speed_modifier = 1.0
+        if current_tile == "sand" then
+            speed_modifier = 0.6  -- 40% slower on sand
+        end
+        
         -- Calculate new position
-        local speed = CONFIG.PLAYER_SPEED * dt
+        local speed = CONFIG.PLAYER_SPEED * speed_modifier * dt
         local new_x = player.x + vx * speed
         local new_y = player.y + vy * speed
         
