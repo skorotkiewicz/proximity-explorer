@@ -2,7 +2,7 @@
 
 > *A multiplayer exploration game where connection happens within range.*
 
-![Proximity Explorer](game.png)
+![Proximity Explorer](docs/game.png)
 
 ---
 
