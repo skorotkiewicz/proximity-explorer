@@ -1,16 +1,29 @@
+# Example service file
 
+```sh
 [Unit]
-Description=cleoselene
+Description=proximity_game
 After=network.target
 
 [Service]
-ExecStart=/home/mod/.cleoselene/bin/cleoselene /home/mod/cleoselene/proximity-explorer/proximity_game.lua
-WorkingDirectory=/home/mod/cleoselene/proximity-explorer
+ExecStart=/usr/local/bin/cleoselene /home/cleoselene/proximity-explorer/proximity_game.lua
+WorkingDirectory=/home/cleoselene/proximity-explorer
 Restart=always
 
 [Install]
 WantedBy=default.target
+```
 
-# nano ~/.config/systemd/user/cleoselene.service
-# systemctl --user enable cleoselene.service
-# systemctl --user start cleoselene.service
+# Run on user
+```sh
+$ nano ~/.config/systemd/user/proximity_game.service
+$ systemctl --user enable proximity_game.service
+$ systemctl --user start proximity_game.service
+```
+
+# Run on system
+```sh
+$ sudo nano /etc/systemd/system/proximity_game.service
+$ sudo systemctl enable proximity_game.service
+$ sudo systemctl start proximity_game.service
+```
