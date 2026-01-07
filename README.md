@@ -27,6 +27,12 @@
 
 ## Running
 
+First clone the repository:
+```bash
+git lfs clone https://github.com/skorotkiewicz/proximity-explorer
+```
+
+Then run the game:
 ```bash
 cleoselene proximity_game.lua
 ```
