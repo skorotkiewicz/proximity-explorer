@@ -31,6 +31,9 @@ local usernames = {}  -- Track taken usernames for uniqueness
 local world_tiles = {}  -- Cache for generated tiles
 local game_time = 0     -- Track game time manually
 
+-- Load NPC module
+local NPC = require("npc")
+
 -- ============================================================================
 -- IMPROVED SEEDED TERRAIN GENERATOR
 -- Uses multi-octave fractal noise for natural-looking landscapes
@@ -219,6 +222,10 @@ end
 function init()
     db = api.new_spatial_db(CONFIG.VISIBILITY_RANGE)
     game_time = 0
+    
+    -- Initialize NPC Guide near spawn area
+    NPC.init(db, 200, 850)
+    
     print("Proximity Explorer initialized!")
     print("World size: " .. CONFIG.WORLD_WIDTH .. "x" .. CONFIG.WORLD_HEIGHT)
     print("Visibility range: " .. CONFIG.VISIBILITY_RANGE .. "px")
@@ -288,6 +295,9 @@ function update(dt)
         end
         player.chat_messages = new_messages
     end
+    
+    -- Update NPC
+    NPC.update(dt, players, game_time, get_tile_type)
 end
 
 -- ============================================================================
@@ -492,6 +502,9 @@ function draw(session_id)
             end
         end
     end
+    
+    -- Draw NPC
+    NPC.draw(cam_x, cam_y, px, py, api)
     
     -- Draw current player (always visible, at calculated screen position)
     local my_color = get_player_color(session_id)
@@ -727,6 +740,12 @@ function on_input(session_id, key_code, is_down)
                     end
                     
                     print("[CHAT] " .. player.name .. ": " .. player.chat_buffer)
+                    
+                    -- Forward message to NPC if nearby
+                    if NPC.is_talking_to(session_id) then
+                        player.session_id = session_id  -- Add session_id for NPC
+                        NPC.receive_message(player, player.chat_buffer, game_time)
+                    end
                 end
                 player.chat_buffer = ""
                 player.chat_input_active = false

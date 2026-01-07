@@ -17,7 +17,11 @@ WORKDIR /app
 
 # Copy game files
 COPY proximity_game.lua .
+COPY npc.lua .
 COPY index.html /var/www/html/index.html
+
+# Copy custom client
+COPY client/ ./client/
 
 # Custom cleoselene engine
 COPY cleoselene /usr/local/bin/cleoselene
@@ -69,7 +73,7 @@ user=root
 command=nginx -g "daemon off;"
 
 [program:cleoselene]
-command=/usr/local/bin/cleoselene /app/proximity_game.lua
+command=/usr/local/bin/cleoselene --client /app/client /app/proximity_game.lua
 directory=/app
 
 EOF

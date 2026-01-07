@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <!-- Filtro para efeito Metaball (Gooey) -->
+    <filter id="goo">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
+      <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 19 -9" result="goo" />
+      <feComposite in="SourceGraphic" in2="goo" operator="atop"/>
+    </filter>
+    
+    <!-- Gradiente Dourado -->
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFD700;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#DAA520;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Fundo (Opcional, transparente é melhor para logo) -->
+  
+  <!-- Grupo Central: O Asteroide Kleopatra (Metaball) -->
+  <g filter="url(#goo)">
+    <circle cx="85" cy="100" r="25" fill="url(#gold)" />
+    <circle cx="115" cy="100" r="25" fill="url(#gold)" />
+    
+    <!-- Animação sutil de rotação do asteroide -->
+    <animateTransform 
+        attributeName="transform" 
+        type="rotate" 
+        from="0 100 100" 
+        to="360 100 100" 
+        dur="20s" 
+        repeatCount="indefinite" />
+  </g>
+
+  <!-- Lua Cleoselene (Orbitando) -->
+  <g>
+    <circle cx="100" cy="40" r="8" fill="#F0F0F0" stroke="#DAA520" stroke-width="1">
+        <!-- Rastro ou brilho opcional -->
+    </circle>
+    
+    <!-- Animação de Órbita -->
+    <animateTransform 
+        attributeName="transform" 
+        type="rotate" 
+        from="0 100 100" 
+        to="360 100 100" 
+        dur="6s" 
+        repeatCount="indefinite" />
+  </g>
+</svg>

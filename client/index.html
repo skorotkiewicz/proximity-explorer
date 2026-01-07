@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <!-- CLEOSELENE_CONFIG -->
+    <title>Game Client</title>
+    <style>
+        body { 
+            margin: 0; 
+            background: #000; 
+            overflow: hidden; 
+            width: 100vw; 
+            height: 100vh; 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        /* Canvas will try to fit screen while maintaining aspect ratio if needed, or full stretch */
+        canvas { 
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: contain; /* Prevents distortion, keeps aspect ratio inside container */
+        }
+        
+        /* Loading Overlay */
+        #loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            transition: opacity 0.5s ease-out, visibility 0.5s;
+            pointer-events: none;
+        }
+        #loading-overlay.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+        #loading-text {
+            color: #ffcc00;
+            font-family: monospace;
+            font-size: 1.2rem;
+            letter-spacing: 4px;
+            margin-top: -20px;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.4; }
+            50% { opacity: 1; }
+            100% { opacity: 0.4; }
+        }
+    </style>
+</head>
+<body>
+    <div id="loading-overlay">
+        <!-- Embedded Logo SVG -->
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="250" height="250">
+            <defs>
+              <filter id="goo">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
+                <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 19 -9" result="goo" />
+                <feComposite in="SourceGraphic" in2="goo" operator="atop"/>
+              </filter>
+              <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#FFD700;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#DAA520;stop-opacity:1" />
+              </linearGradient>
+            </defs>
+            <g filter="url(#goo)">
+              <circle cx="85" cy="100" r="25" fill="url(#gold)" />
+              <circle cx="115" cy="100" r="25" fill="url(#gold)" />
+              <animateTransform attributeName="transform" type="rotate" from="0 100 100" to="360 100 100" dur="20s" repeatCount="indefinite" />
+            </g>
+            <g>
+              <circle cx="100" cy="40" r="8" fill="#F0F0F0" stroke="#DAA520" stroke-width="1" />
+              <animateTransform attributeName="transform" type="rotate" from="0 100 100" to="360 100 100" dur="6s" repeatCount="indefinite" />
+            </g>
+        </svg>
+        <div id="loading-text">CONNECTING...</div>
+    </div>
+    
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+   
+    <script type="module" src="main.js"></script>
+</body>
+</html>
