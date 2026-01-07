@@ -29,7 +29,7 @@
 
 First clone the repository:
 ```bash
-git clone --recurse-submodules git@github.com:skorotkiewicz/proximity-explorer.git
+git clone https://github.com/skorotkiewicz/proximity-explorer.git
 ```
 
 Then run the game:
