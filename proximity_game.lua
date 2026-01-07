@@ -27,6 +27,7 @@ local CONFIG = {
 -- Game state
 local db = nil
 local players = {}
+local usernames = {}  -- Track taken usernames for uniqueness
 local world_tiles = {}  -- Cache for generated tiles
 local game_time = 0     -- Track game time manually
 
@@ -299,6 +300,47 @@ function draw(session_id)
         api.clear_screen(10, 10, 20)
         api.set_color(255, 255, 255)
         api.draw_text("Loading...", 380, 290)
+        return
+    end
+    
+    -- Draw username entry screen
+    if player.entering_name then
+        api.clear_screen(15, 20, 35)
+        
+        -- Title
+        api.set_color(100, 200, 255)
+        api.draw_text("PROXIMITY EXPLORER", 250, 190)
+        
+        -- Subtitle
+        api.set_color(150, 150, 180)
+        api.draw_text("Enter your username to join", 250, 220)
+        
+        -- Input box background
+        api.set_color(30, 35, 50)
+        api.fill_rect(250, 250, 300, 40)
+        
+        -- Input box border
+        api.set_color(80, 120, 180)
+        api.draw_line(250, 250, 550, 250, 2)  -- Top
+        api.draw_line(250, 290, 550, 290, 2)  -- Bottom
+        api.draw_line(250, 250, 250, 290, 2)  -- Left
+        api.draw_line(550, 250, 550, 290, 2)  -- Right
+        
+        -- Username input
+        api.set_color(255, 255, 255)
+        api.draw_text(player.name_buffer .. "_", 260, 270)
+        
+        -- Error message
+        if player.name_error then
+            api.set_color(255, 100, 100)
+            api.draw_text(player.name_error, 300, 310)
+        end
+        
+        -- Instructions
+        api.set_color(120, 120, 140)
+        api.draw_text("2-16 characters (a-z, 0-9, _)", 270, 320)
+        api.draw_text("Press ENTER to join", 300, 345)
+        
         return
     end
     
@@ -596,10 +638,13 @@ function on_connect(session_id)
         chat_messages = {},
         chat_buffer = "",
         chat_input_active = false,
-        name = "Player " .. string.sub(session_id, 1, 4),
+        name = nil,  -- Set when player enters username
+        name_buffer = "",  -- Buffer for typing username
+        entering_name = true,  -- Start in name entry mode
+        name_error = nil,  -- Error message if name is taken
     }
     
-    print("Player " .. session_id .. " spawned at (" .. math.floor(spawn_x) .. ", " .. math.floor(spawn_y) .. ")")
+    print("Player " .. session_id .. " connected, awaiting username...")
 end
 
 function on_disconnect(session_id)
@@ -607,6 +652,10 @@ function on_disconnect(session_id)
     
     local player = players[session_id]
     if player then
+        -- Free up the username
+        if player.name then
+            usernames[string.lower(player.name)] = nil
+        end
         db:remove(player.entity_id)
         players[session_id] = nil
     end
@@ -615,6 +664,50 @@ end
 function on_input(session_id, key_code, is_down)
     local player = players[session_id]
     if not player then return end
+    
+    -- Handle username entry mode
+    if player.entering_name then
+        if is_down then
+            if key_code == 13 then  -- Enter - submit username
+                local name = player.name_buffer
+                if #name >= 2 and #name <= 16 then
+                    local name_lower = string.lower(name)
+                    if usernames[name_lower] then
+                        player.name_error = "Username already taken!"
+                    else
+                        -- Username is valid and unique
+                        usernames[name_lower] = true
+                        player.name = name
+                        player.entering_name = false
+                        player.name_error = nil
+                        print("Player " .. session_id .. " joined as: " .. name)
+                        print("Player " .. name .. " spawned at (" .. math.floor(player.x) .. ", " .. math.floor(player.y) .. ")")
+                    end
+                else
+                    player.name_error = "Name must be 2-16 characters"
+                end
+            elseif key_code == 8 then  -- Backspace
+                if #player.name_buffer > 0 then
+                    player.name_buffer = string.sub(player.name_buffer, 1, -2)
+                    player.name_error = nil
+                end
+            elseif key_code >= 32 and key_code <= 126 then
+                -- Printable ASCII
+                if #player.name_buffer < 16 then
+                    local char = string.char(key_code)
+                    if key_code >= 65 and key_code <= 90 then
+                        char = string.lower(char)
+                    end
+                    -- Only allow alphanumeric and underscore
+                    if char:match("[%w_]") then
+                        player.name_buffer = player.name_buffer .. char
+                        player.name_error = nil
+                    end
+                end
+            end
+        end
+        return  -- Don't process other input while entering name
+    end
     
     -- Handle Enter key for chat
     if key_code == 13 then  -- Enter
@@ -676,12 +769,3 @@ function on_input(session_id, key_code, is_down)
     player.inputs[key_code] = is_down
 end
 
--- ============================================================================
--- TEXT INPUT HANDLER (if supported by engine)
--- ============================================================================
-function on_text(session_id, text)
-    local player = players[session_id]
-    if player and player.chat_input_active then
-        player.chat_buffer = player.chat_buffer .. text
-    end
-end
