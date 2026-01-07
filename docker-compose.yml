@@ -1,0 +1,7 @@
+services:
+  proximity-explorer:
+    build: .
+    container_name: proximity-explorer
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
