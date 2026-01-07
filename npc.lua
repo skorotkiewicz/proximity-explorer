@@ -176,8 +176,8 @@ function NPC.receive_message(player, message, game_time)
             content = message
         })
         
-        -- Generate response (placeholder - replace with actual LLM call)
-        local response = NPC.generate_response(message)
+        -- Try LLM first, fallback to pattern matching
+        local response = NPC.call_llm_sync(state.conversation)
         
         table.insert(state.conversation, {
             role = "assistant", 
@@ -194,11 +194,8 @@ function NPC.receive_message(player, message, game_time)
     end
 end
 
--- Generate LLM response (placeholder implementation)
+-- Generate LLM response (pattern matching fallback)
 function NPC.generate_response(message)
-    -- TODO: Replace with actual HTTP call to LLM API
-    -- For now, use simple pattern matching responses
-    
     local msg_lower = string.lower(message)
     
     if msg_lower:find("hello") or msg_lower:find("hi") or msg_lower:find("hey") then
@@ -224,31 +221,85 @@ function NPC.generate_response(message)
     end
 end
 
--- Make HTTP request to LLM (requires engine HTTP support)
--- This is the function to implement when HTTP becomes available
-function NPC.call_llm(messages, callback)
-    -- Structure for OpenAI-compatible API:
+-- Make synchronous HTTP request to LLM
+function NPC.call_llm_sync(messages)
+    -- Check if HTTP API is available
+    if not api or not api.http_post then
+        -- Fallback to pattern matching
+        local last_msg = messages[#messages]
+        if last_msg then
+            return NPC.generate_response(last_msg.content)
+        end
+        return "I'm thinking..."
+    end
+    
+    -- Build system prompt for context
+    local system_prompt = [[You are a helpful NPC Guide in a multiplayer exploration game called Proximity Explorer. 
+You wander a procedurally generated 2000x2000 world with seed 77777.
+The world has water (blue, impassable), rocks (gray, impassable), sand (tan, slows movement), grass (green), and trees (dark green).
+Players can only see each other within 100 pixels and can only chat with nearby players.
+Controls: WASD or arrow keys to move, Enter to chat.
+Keep responses SHORT (1-2 sentences max). Be friendly and helpful.]]
+
+    -- Build messages array with system prompt
+    local llm_messages = {
+        { role = "system", content = system_prompt }
+    }
+    
+    -- Add conversation history (last 6 messages max to keep context small)
+    local start_idx = math.max(1, #messages - 6)
+    for i = start_idx, #messages do
+        table.insert(llm_messages, messages[i])
+    end
+    
+    -- Build request body
     local request_body = {
         model = NPC.CONFIG.LLM_MODEL,
-        messages = messages,
-        max_tokens = 150,
+        messages = llm_messages,
+        max_tokens = 100,
         temperature = 0.7
     }
     
-    -- TODO: Implement when engine supports HTTP
-    -- api.http_post(NPC.CONFIG.LLM_ENDPOINT, request_body, function(response)
-    --     if response and response.choices and response.choices[1] then
-    --         callback(response.choices[1].message.content)
-    --     else
-    --         callback("I'm having trouble thinking right now...")
-    --     end
-    -- end)
+    -- Make HTTP request
+    local response_body, err = api.http_post(NPC.CONFIG.LLM_ENDPOINT, request_body)
     
-    -- Fallback to pattern matching
+    if err then
+        print("[NPC] LLM Error: " .. err)
+        -- Fallback to pattern matching
+        local last_msg = messages[#messages]
+        if last_msg then
+            return NPC.generate_response(last_msg.content)
+        end
+        return "I'm having trouble thinking..."
+    end
+    
+    -- Parse JSON response
+    local response, parse_err = api.json_decode(response_body)
+    if parse_err then
+        print("[NPC] JSON Parse Error: " .. parse_err)
+        local last_msg = messages[#messages]
+        if last_msg then
+            return NPC.generate_response(last_msg.content)
+        end
+        return "I got confused..."
+    end
+    
+    -- Extract response text
+    if response and response.choices and response.choices[1] and response.choices[1].message then
+        local content = response.choices[1].message.content
+        -- Truncate if too long
+        if #content > 150 then
+            content = string.sub(content, 1, 147) .. "..."
+        end
+        return content
+    end
+    
+    -- Fallback
     local last_msg = messages[#messages]
     if last_msg then
-        callback(NPC.generate_response(last_msg.content))
+        return NPC.generate_response(last_msg.content)
     end
+    return "I'm not sure what to say..."
 end
 
 -- Draw NPC (called from main draw function)
