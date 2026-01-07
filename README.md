@@ -33,6 +33,16 @@ cleoselene proximity_game.lua
 
 Then open your browser to the displayed URL.
 
+## Docker
+
+Quick start with Docker:
+
+```bash
+docker compose up -d
+```
+
+Then open [http://localhost:8080](http://localhost:8080)
+
 ## Configuration
 
 Edit `proximity_game.lua` to customize:
