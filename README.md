@@ -34,7 +34,7 @@ git lfs clone https://github.com/skorotkiewicz/proximity-explorer
 
 Then run the game:
 ```bash
-cleoselene proximity_game.lua
+./cleoselene --client client/ proximity_game.lua
 ```
 
 Then open your browser to the displayed URL.
